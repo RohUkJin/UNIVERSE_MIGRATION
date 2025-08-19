@@ -13,9 +13,17 @@ export default defineNuxtConfig({
   typescript: {
     typeCheck: true,
     strict: false,
+    tsConfig: {
+      compilerOptions: {
+        module: 'ES2022',
+        target: 'ES2022',
+        moduleResolution: 'bundler'
+      }
+    }
   },
 
   app: {
+    pageTransition: { name: 'page', mode: 'out-in' },
     head: {
       title: 'Universe_Migration',
       meta: [

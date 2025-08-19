@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-const title = 'Universe News Title';
+const title = 'Universe News';
 const description = 'Universe News Description';
 
 useHead({

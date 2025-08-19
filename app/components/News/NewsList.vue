@@ -5,10 +5,7 @@
             <ul class="news-list">
                 <li class="news-item" v-for="item in news" :key="item.id" @click="moveDetail(item)">
                     <div class="news-imgbx">
-                        <img 
-                            :src="item.image_url || replaceImageSrc" 
-                            :alt="item.title"
-                        >
+                        <img :src="item.image_url || replaceImageSrc" :alt="item.title" @error="getReplaceImage">
                     </div>
                     <div class="news-txtbx">
                         <span class="news-site">{{ item.news_site }}</span>
@@ -25,78 +22,72 @@
     </section>
 </template>
 
-<!-- @error="getReplaceImage" -->
-
-
 <script setup lang="ts">
 
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
-import type { INews, INewsItem, INewsResponse } from '../../types/news';
-import { useFetch } from 'nuxt/app';
+import type { INewsItem, INewsResponse } from '../../types/news';
 
 const news = ref<INewsItem[]>([]);
 const isLoading = ref<boolean>(false);
 const nextData = ref<string | null>(null);
 const hasNextData = ref<boolean>(true);
 
-const router = useRouter();
+// 새로고침 문제 해결된 코드
+const { data, error, pending, refresh } = await useFetch<INewsResponse>(`https://api.spaceflightnewsapi.net/v4/blogs/?limit=10&offset=0`, {
+    server: true,
+});
 
-// 상세 페이지 클릭시, 디테일 페이지 이동
-const moveDetail = (item : INewsItem) => {
-    router.push(`/news/${item.id}`);
+// 디버깅 로그 추가
+console.log('초기 데이터 상태:', {
+    data: data.value,
+    news: news.value,
+    hasData: !!data.value,
+    dataLength: data.value?.results?.length || 0,
+    error: error.value,
+    pending: pending.value
+});
+
+// 초기 데이터값 : SSR 사용
+if (data.value) {
+    news.value = data.value.results;
+    nextData.value = data.value.next;
+    hasNextData.value = !!data.value.next;
 }
 
-// API 호출 함수
-const getData = async (next: string | null = null) => {
-    if (isLoading.value) return;
+// 무한스크롤용 Next값 : CSR 사용
+const loadMoreData = async () => {
+    if (isLoading.value || !nextData.value || !hasNextData.value) return;
+    
     isLoading.value = true;
-
+    
     try {
-        await nextTick();
-        const { data, error } = await useFetch<INewsResponse>(next || `https://api.spaceflightnewsapi.net/v4/blogs/?limit=10&offset=0`);
+        // $fetch 사용 : 클라이언트 전용
+        const response = await $fetch<INewsResponse>(nextData.value);
         
-        if (error.value) {
-            console.error('API 에러:', error.value);
-            return;
-        }
-
-        if (data.value) {
-            if (next) {
-                news.value = [...news.value, ...data.value.results];
-            } else {
-                news.value = data.value.results;
-            }
-
-            nextData.value = data.value.next;
-            hasNextData.value = !!data.value.next;
-        } else {
-            console.error('에러: 데이터 = null');
+        if (response) {
+            news.value = [...news.value, ...response.results];
+            nextData.value = response.next;
+            hasNextData.value = !!response.next;
         }
     } catch (err) {
-        console.error('데이터 로딩 실패:', err);
+        console.error('추가 데이터 로딩 실패:', err);
     } finally {
         isLoading.value = false;
     }
-}
+};
 
-// 스크롤 감지 이벤트
 const handleScroll = () => {
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     const windowHeight = window.innerHeight;
     const documentHeight = document.documentElement.offsetHeight;
 
-    // 현재 스크롤 위치가 밑에서 100px 이내로 가면
     if (scrollTop + windowHeight >= documentHeight - 100) {
-        // 다음 데이터와 여부가 존재하고, 로딩중이지 않을 때 API 재호출
-        if (hasNextData.value && !isLoading.value && nextData.value) {
-            getData(nextData.value);
-        }
+        loadMoreData(); 
     }
 };
 
 // 데이터에 이미지가 없을 때 대체 이미지 삽입
-const replaceImageSrc = '../../assets/images/Image-not-found.png';
+import ImageNotFound from '../../assets/images/Image-not-found.png'
+const replaceImageSrc = ImageNotFound;
 
 const getReplaceImage = (e: Event) => {
     const target = e.target as HTMLImageElement;
@@ -105,13 +96,17 @@ const getReplaceImage = (e: Event) => {
     }
 };
 
-// 컴포넌트가 마운트 될 때, API 호출 및 스크롤 이벤트 추가
+// 상세 페이지 클릭시, 디테일 페이지 이동
+const router = useRouter();
+
+const moveDetail = (item: INewsItem) => {
+    router.push(`/news/${item.id}`);
+}
+
 onMounted(() => {
-    getData();
     window.addEventListener('scroll', handleScroll);
 });
 
-// 컴포넌트가 언마운트 될 때, 스크롤 이벤트 제거
 onUnmounted(() => {
     window.removeEventListener('scroll', handleScroll);
 });
